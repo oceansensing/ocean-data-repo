@@ -111,9 +111,10 @@ jobs:
           path: |
             site/public/map/tiles
             site/public/map/tiles-60m
-            site/public/map/tiles-f24h
-            site/public/map/tiles-60m-f24h
-          key: currents-tiles-v1-${{ steps.model.outputs.run }}
+          # v2: the +24h tile sets are no longer built, and a v1 hit would
+          # restore them into the artifact and publish them again — the cache
+          # is an input to what gets served, not just a time saver.
+          key: currents-tiles-v2-${{ steps.model.outputs.run }}
 
       - name: Build current tiles
         if: steps.model.outputs.run != '' && steps.tiles.outputs.cache-hit != 'true'
@@ -127,9 +128,8 @@ jobs:
           path: |
             site/public/map/tiles-sst-navy
             site/public/map/tiles-sss-navy
-            site/public/map/tiles-sst-navy-f24h
-            site/public/map/tiles-sss-navy-f24h
-          key: field-tiles-v1-${{ steps.model.outputs.run }}
+          # v2: same reason as the currents cache above.
+          key: field-tiles-v2-${{ steps.model.outputs.run }}
 
       - name: Build field tiles
         if: steps.model.outputs.run != '' && steps.fieldtiles.outputs.cache-hit != 'true'
