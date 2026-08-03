@@ -48,6 +48,38 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Seed with what is already published, and this is not an optimisation.
+      #
+      # Every pipeline degrades an upstream outage into stale data by keeping
+      # the file it wrote last time — "keeping the previous fields", "keeping
+      # previous asset positions". That depended on a snapshot committed in
+      # the site repository, and moving the data here removed it: a clean
+      # checkout has no previous anything, so the fallbacks became no-ops the
+      # day this repository started. An outage would blank a layer instead of
+      # ageing it, which is the failure those guards exist to prevent.
+      #
+      # So the last publish is downloaded back over the empty directory
+      # first. Best effort: on the very first run there is nothing to fetch
+      # and the pipelines simply start cold, which is correct.
+      - name: Seed from the last publish
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          mkdir -p site/public/map
+          base=https://oceansensing.org/ocean-data-repo/map
+          got=0
+          for f in ocean-assets.json argo.json currents.json currents-60m.json \
+                   currents-atlantic.json currents-arctic.json \
+                   currents-atlantic-60m.json currents-arctic-60m.json \
+                   sst-oisst.json sst-navy.json sss-navy.json; do
+            if curl -fsS --max-time 120 "$base/$f" -o "site/public/map/$f"; then
+              got=$((got + 1))
+            else
+              rm -f "site/public/map/$f"
+            fi
+          done
+          echo "seeded $got files from the previous publish"
+
       # Standard library only, by design — see the header of each script.
       # If this ever needs a pip install, something has gone wrong upstream
       # of here.
