@@ -19,15 +19,15 @@ version of every file forever — the site this relieves had banked 356 MB of
 superseded model grids for 130 MB of live data, none of it reclaimable without
 rewriting history.
 
-**The static data is committed**, in : the GEBCO isobaths and the
+**The static data is committed**, in `map/`: the GEBCO isobaths and the
 Natural Earth coastline and borders. The distinction is not convenience. The
 seafloor does not change, so there is nothing to churn — and it *cannot* be
 rebuilt here in any case, because contouring GEBCO needs a 7.5 GB grid that
 is downloaded by hand and run once on a workstation. Committing it costs its
 size once; fetching it would cost nothing less and would fail.
 
-So a Already up to date. gives you the seafloor and no ocean. For the ocean, fetch over
-HTTPS or run the pipelines yourself.
+So a `git pull` gives you the seafloor and no ocean. For the ocean, fetch it
+over HTTPS or run the pipelines yourself.
 
 ## Where it comes from
 
