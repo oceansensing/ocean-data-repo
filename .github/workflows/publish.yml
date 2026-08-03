@@ -1,0 +1,131 @@
+name: Publish ocean data
+
+# Hourly, offset from the hour because scheduled runs bunch up at :00. The
+# site's own deploy runs at :17, so this runs at :05 — far enough ahead that a
+# site build finds fresh data waiting rather than racing this one.
+on:
+  schedule:
+    - cron: '5 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+# No `contents: write`. Nothing here commits, and the token should not be able
+# to: the whole reason this repository exists is that its history does not grow.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      # The pipelines live in the site repository, so there is one copy of
+      # them and one contract. Pinned to a branch rather than vendored: a
+      # vendored copy drifts, and the failure when it does is a published
+      # file that no longer matches what the map expects to read.
+      - name: Check out the pipelines
+        uses: actions/checkout@v4
+        with:
+          repository: oceansensing/oceansensing.github.io
+          ref: main
+          path: site
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Standard library only, by design — see the header of each script.
+      # If this ever needs a pip install, something has gone wrong upstream
+      # of here.
+      - name: Storms, saildrones, gliders, Argo
+        working-directory: site
+        run: python3 scripts/fetch-ocean-assets.py
+
+      - name: Currents, surface and 60 m
+        working-directory: site
+        run: python3 scripts/fetch-currents.py
+
+      - name: Sea-surface temperature and salinity
+        working-directory: site
+        run: python3 scripts/fetch-ocean-fields.py
+
+      # Which model run the tiles belong to. They only change when it does,
+      # so an hourly build restores them from cache rather than pulling a few
+      # hundred megabytes from a public research server twenty-four times a
+      # day.
+      - name: Identify the model run
+        id: model
+        working-directory: site
+        run: echo "run=$(python3 scripts/fetch-currents.py --run)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore current tiles
+        id: tiles
+        uses: actions/cache@v4
+        with:
+          path: |
+            site/public/map/tiles
+            site/public/map/tiles-60m
+            site/public/map/tiles-f24h
+            site/public/map/tiles-60m-f24h
+          key: currents-tiles-v1-${{ steps.model.outputs.run }}
+
+      - name: Build current tiles
+        if: steps.model.outputs.run != '' && steps.tiles.outputs.cache-hit != 'true'
+        working-directory: site
+        run: python3 scripts/fetch-currents.py --tiles
+
+      - name: Restore field tiles
+        id: fieldtiles
+        uses: actions/cache@v4
+        with:
+          path: |
+            site/public/map/tiles-sst-navy
+            site/public/map/tiles-sss-navy
+            site/public/map/tiles-sst-navy-f24h
+            site/public/map/tiles-sss-navy-f24h
+          key: field-tiles-v1-${{ steps.model.outputs.run }}
+
+      - name: Build field tiles
+        if: steps.model.outputs.run != '' && steps.fieldtiles.outputs.cache-hit != 'true'
+        working-directory: site
+        run: python3 scripts/fetch-ocean-fields.py --tiles
+
+      # The gate. The map reads these files against schema.ts, and a shape
+      # that drifts shows up as a blank or wrong layer rather than an error —
+      # so nothing publishes unless the contract holds.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the data against the published contract
+        working-directory: site
+        run: node scripts/test-schema.mjs
+
+      # Assemble what actually gets served. `map/` at the root, so a consumer
+      # points dataBase at <pages url>/map/ and every path inside the files
+      # resolves the way it always has.
+      - name: Assemble the site
+        run: |
+          mkdir -p out
+          cp -r site/public/map out/map
+          # Pages runs Jekyll otherwise, which would ignore anything starting
+          # with an underscore and slow the upload down for no reason.
+          touch out/.nojekyll
+          cp README.md out/index.md
+          du -sh out out/map
+          find out -name index.json | wc -l | xargs echo "tile indexes:"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+      - id: deploy
+        uses: actions/deploy-pages@v4
