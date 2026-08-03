@@ -9,20 +9,25 @@ versioning, no notice before a file changes shape or disappears, and no
 support. If you need this data, go to the sources below — they publish it
 properly and they are who deserve the credit and the traffic.
 
-## What is here
+## What is here, and what is not
 
-Nothing, in git terms. The data is **fetched into the Pages artifact and
-never committed** — that is the entire point of the repository existing.
+**The real-time data is never committed.** Currents, temperature, salinity,
+storms, gliders, saildrones and floats are fetched into the Pages artifact on
+every run; the previous run's copies are simply gone. That is the point of the
+repository existing. One that commits what it fetches accumulates every
+version of every file forever — the site this relieves had banked 356 MB of
+superseded model grids for 130 MB of live data, none of it reclaimable without
+rewriting history.
 
-A repository that commits what it fetches accumulates every version of every
-file forever: the site this replaced carried 356 MB of superseded model grids
-in its history for 130 MB of live data, and none of it could be reclaimed
-without rewriting history. Here, each run publishes and the previous run is
-gone. The repository stays a few hundred kilobytes of workflow and prose no
-matter how long it runs or how much it serves.
+**The static data is committed**, in : the GEBCO isobaths and the
+Natural Earth coastline and borders. The distinction is not convenience. The
+seafloor does not change, so there is nothing to churn — and it *cannot* be
+rebuilt here in any case, because contouring GEBCO needs a 7.5 GB grid that
+is downloaded by hand and run once on a workstation. Committing it costs its
+size once; fetching it would cost nothing less and would fail.
 
-So: no `git pull` will give you the data. Fetch it over HTTPS, or run the
-pipelines yourself.
+So a Already up to date. gives you the seafloor and no ocean. For the ocean, fetch over
+HTTPS or run the pipelines yourself.
 
 ## Where it comes from
 

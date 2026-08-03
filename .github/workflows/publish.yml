@@ -117,10 +117,16 @@ jobs:
       # Assemble what actually gets served. `map/` at the root, so a consumer
       # points dataBase at <pages url>/map/ and every path inside the files
       # resolves the way it always has.
+      # Two halves, and the order is deliberate. The committed half first —
+      # the seafloor and the shorelines, which do not change and cannot be
+      # rebuilt in CI anyway (the isobaths need a 7.5 GB GEBCO grid) — then
+      # the fetched half over the top. Fetched wins on any collision, which is
+      # what makes a stale committed copy harmless rather than sticky.
       - name: Assemble the site
         run: |
-          mkdir -p out
-          cp -r site/public/map out/map
+          mkdir -p out/map
+          cp -r map/. out/map/
+          cp -r site/public/map/. out/map/
           # Pages runs Jekyll otherwise, which would ignore anything starting
           # with an underscore and slow the upload down for no reason.
           touch out/.nojekyll
