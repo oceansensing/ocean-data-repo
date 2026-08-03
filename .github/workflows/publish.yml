@@ -28,6 +28,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
+      # This repository first, and first for a reason: actions/checkout
+      # cleans its destination, so taking the root after site/ would wipe it.
+      - name: Check out this repository
+        uses: actions/checkout@v4
+
       # The pipelines live in the site repository, so there is one copy of
       # them and one contract. Pinned to a branch rather than vendored: a
       # vendored copy drifts, and the failure when it does is a published
