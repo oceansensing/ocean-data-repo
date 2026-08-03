@@ -46,6 +46,7 @@ the map reads it against
 | Argo floats | Argo GDAC via Ifremer |
 | currents, SST, salinity | US Navy ESPC-D-V02, via HYCOM's OPeNDAP |
 | observed SST | NOAA PSL OISST v2.1 |
+| 10 m wind | ECMWF IFS open data (CC BY 4.0) |
 
 Each file names its own source and, where it has one, the model run it came
 from.
@@ -57,6 +58,11 @@ to 33 hours later, so its own T+0 is a field for yesterday and its T+36 is
 about the present. Read `refTime` for the hour a file is valid at and
 `modelRun` for the run it came from; `lead` is the difference, in hours.
 OISST is an analysis and has neither a run nor a lead.
+
+**The wind is a nowcast**, and that is the models differing rather than an
+inconsistency: IFS runs four times a day and publishes within hours, so the
+step nearest now is genuinely about now. Its `lead` is therefore small and
+counted the same way — hours after its own run.
 
 ## Cadence
 

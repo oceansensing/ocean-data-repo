@@ -71,7 +71,8 @@ jobs:
           for f in ocean-assets.json argo.json currents.json currents-60m.json \
                    currents-atlantic.json currents-arctic.json \
                    currents-atlantic-60m.json currents-arctic-60m.json \
-                   sst-oisst.json sst-navy.json sss-navy.json; do
+                   sst-oisst.json sst-navy.json sss-navy.json \
+                   wind.json wind-atlantic.json wind-arctic.json; do
             if curl -fsS --max-time 120 "$base/$f" -o "site/public/map/$f"; then
               got=$((got + 1))
             else
@@ -80,9 +81,16 @@ jobs:
           done
           echo "seeded $got files from the previous publish"
 
+      # The one exception to "no Python dependencies", and it is the format
+      # rather than the effort: ECMWF packs its open GRIB2 with CCSDS/AEC
+      # (data representation template 5.42), which nothing in the standard
+      # library can decode. eccodes ships binary wheels with the library
+      # bundled, so this is a pip install and not an apt one. Every other
+      # pipeline below still needs nothing.
+      - name: Install the wind pipeline's dependency
+        run: pip install -r site/scripts/requirements-wind.txt
+
       # Standard library only, by design — see the header of each script.
-      # If this ever needs a pip install, something has gone wrong upstream
-      # of here.
       - name: Storms, saildrones, gliders, Argo
         working-directory: site
         run: python3 scripts/fetch-ocean-assets.py
@@ -94,6 +102,14 @@ jobs:
       - name: Sea-surface temperature and salinity
         working-directory: site
         run: python3 scripts/fetch-ocean-fields.py
+
+      # ECMWF publishes four runs a day and lands them within hours, so
+      # unlike the ESPC fields this one is a nowcast: the step nearest now,
+      # off the freshest run that has published it. Nothing to cache — the
+      # three files are about 3 MB and change every run.
+      - name: 10 m wind
+        working-directory: site
+        run: python3 scripts/fetch-wind.py
 
       # Which model run the tiles belong to. They only change when it does,
       # so an hourly build restores them from cache rather than pulling a few
