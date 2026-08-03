@@ -111,10 +111,14 @@ jobs:
           path: |
             site/public/map/tiles
             site/public/map/tiles-60m
-          # v2: the +24h tile sets are no longer built, and a v1 hit would
-          # restore them into the artifact and publish them again — the cache
-          # is an input to what gets served, not just a time saver.
-          key: currents-tiles-v2-${{ steps.model.outputs.run }}
+          # v3: leads are counted from the model run now, so the *same* run
+          # builds T+36 where it used to build T+0. The key names the run and
+          # nothing else, so a v2 hit would restore a nowcast tile set and
+          # publish it under a forecast header — the right run, the wrong
+          # hour, and nothing on screen to say so. The cache is an input to
+          # what gets served, not just a time saver, so a change in what the
+          # tiles *contain* has to move the key.
+          key: currents-tiles-v3-${{ steps.model.outputs.run }}
 
       - name: Build current tiles
         if: steps.model.outputs.run != '' && steps.tiles.outputs.cache-hit != 'true'
@@ -128,8 +132,8 @@ jobs:
           path: |
             site/public/map/tiles-sst-navy
             site/public/map/tiles-sss-navy
-          # v2: same reason as the currents cache above.
-          key: field-tiles-v2-${{ steps.model.outputs.run }}
+          # v3: same reason as the currents cache above.
+          key: field-tiles-v3-${{ steps.model.outputs.run }}
 
       - name: Build field tiles
         if: steps.model.outputs.run != '' && steps.fieldtiles.outputs.cache-hit != 'true'

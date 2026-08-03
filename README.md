@@ -50,6 +50,14 @@ the map reads it against
 Each file names its own source and, where it has one, the model run it came
 from.
 
+**The ESPC fields are a forecast, at T+36 from the run** — the hour the run
+itself labels +36, not 36 hours from whenever this ran. That matters because
+the run lands late: ESPC runs daily at 12Z and the aggregation ingests it 24
+to 33 hours later, so its own T+0 is a field for yesterday and its T+36 is
+about the present. Read `refTime` for the hour a file is valid at and
+`modelRun` for the run it came from; `lead` is the difference, in hours.
+OISST is an analysis and has neither a run nor a lead.
+
 ## Cadence
 
 Hourly, offset from the hour. The ocean model runs once a day at 12Z, so most
