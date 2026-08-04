@@ -149,6 +149,14 @@ jobs:
             site/public/map/tiles-sst-navy
             site/public/map/tiles-sss-navy
             site/public/map/tiles-sic-navy
+            site/public/map/tiles-sit-navy
+          # v5: ice thickness is a fourth tile set, and it replaced the ice
+          # edge — which was a contour, published as one file and never
+          # cached, so nothing has to be removed here. The v4 note below
+          # applies verbatim: a path missing the new directory never saves
+          # it, and a key that does not move means the previous entry hits,
+          # the build is skipped, and the run publishes without it.
+          #
           # v4: sea ice concentration is a third tile set, and both halves of
           # this had to change together. A path that does not list it means
           # the ice tiles are never saved; a key that does not move means the
@@ -158,7 +166,7 @@ jobs:
           # grid for ice and says nothing. Same reasoning as v3 below: the
           # cache is an input to what gets served, so a change in what the
           # tiles contain has to move the key.
-          key: field-tiles-v4-${{ steps.model.outputs.run }}
+          key: field-tiles-v5-${{ steps.model.outputs.run }}
 
       - name: Build field tiles
         if: steps.model.outputs.run != '' && steps.fieldtiles.outputs.cache-hit != 'true'
