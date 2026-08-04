@@ -148,8 +148,17 @@ jobs:
           path: |
             site/public/map/tiles-sst-navy
             site/public/map/tiles-sss-navy
-          # v3: same reason as the currents cache above.
-          key: field-tiles-v3-${{ steps.model.outputs.run }}
+            site/public/map/tiles-sic-navy
+          # v4: sea ice concentration is a third tile set, and both halves of
+          # this had to change together. A path that does not list it means
+          # the ice tiles are never saved; a key that does not move means the
+          # v3 entry *hits*, the build step is skipped entirely, and the run
+          # publishes the two tile sets it restored with the third silently
+          # absent — the map then quietly falls back to the coarse region
+          # grid for ice and says nothing. Same reasoning as v3 below: the
+          # cache is an input to what gets served, so a change in what the
+          # tiles contain has to move the key.
+          key: field-tiles-v4-${{ steps.model.outputs.run }}
 
       - name: Build field tiles
         if: steps.model.outputs.run != '' && steps.fieldtiles.outputs.cache-hit != 'true'
