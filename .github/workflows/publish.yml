@@ -81,6 +81,54 @@ jobs:
           done
           echo "seeded $got files from the previous publish"
 
+      # The forecast frames, whose filenames are not knowable in advance.
+      #
+      # A non-base frame is named for its lead, and the lead moves with the
+      # run's lateness, so there is no fixed name to put in the list above.
+      # Left unseeded, an ESPC outage would keep a previous `currents.json`
+      # that advertises two frames while only one of them is on disk — the
+      # map would offer an hour whose grid 404s. So the seeded base files are
+      # read for what they advertise, and that is fetched too.
+      - name: Seed the forecast frames the base files advertise
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, urllib.request
+          BASE = 'https://oceansensing.org/ocean-data-repo/map'
+          d = pathlib.Path('site/public/map')
+
+          def grab(name):
+              """Fetch one published file, returning its header or None."""
+              try:
+                  with urllib.request.urlopen(f'{BASE}/{name}', timeout=120) as r:
+                      body = r.read()
+              except Exception as exc:
+                  print(f'  no previous {name} ({exc})')
+                  return None
+              (d / name).write_bytes(body)
+              return json.loads(body)[0]['header']
+
+          got = 0
+          for stem in ('currents.json', 'currents-60m.json'):
+              if not (d / stem).exists():
+                  continue
+              for frame in json.loads((d / stem).read_text())[0]['header'].get('forecast', []):
+                  name = frame['url'].rsplit('/', 1)[-1]
+                  if name == stem:
+                      continue
+                  # The frame first, then whatever *it* says its regions are:
+                  # they carry its lead in their names, so only the frame's
+                  # own header knows them.
+                  head = grab(name)
+                  if not head:
+                      continue
+                  got += 1
+                  for region in head.get('details', []):
+                      if grab(region['url'].rsplit('/', 1)[-1]):
+                          got += 1
+          print(f'seeded {got} forecast-frame files from the previous publish')
+          PY
+
       # The one exception to "no Python dependencies", and it is the format
       # rather than the effort: ECMWF packs its open GRIB2 with CCSDS/AEC
       # (data representation template 5.42), which nothing in the standard
@@ -111,30 +159,57 @@ jobs:
         working-directory: site
         run: python3 scripts/fetch-wind.py
 
-      # Which model run the tiles belong to. They only change when it does,
-      # so an hourly build restores them from cache rather than pulling a few
-      # hundred megabytes from a public research server twenty-four times a
-      # day.
-      - name: Identify the model run
+      # What the tiles contain, as a cache key: the model run **and every
+      # valid time built from it**.
+      #
+      # The run alone was enough while the step was pinned to a fixed lead,
+      # because then one run meant one hour. Both pipelines now choose their
+      # step by valid time, snapped to a six-hour boundary, so the step moves
+      # four times a day *within* a single run — and a run-only key would hit
+      # on every one of those, skip the build, and publish the previous
+      # window's tiles under the new hour's header. The right run, the wrong
+      # hour, and nothing on screen to say so.
+      #
+      # Each pipeline answers for its own tiles. The field key used to be the
+      # currents' run, which held while both were pinned to the same lead;
+      # a key describing some other build's contents is the same failure with
+      # an extra layer of indirection.
+      #
+      # Both flags print progress to stderr, so stdout is only ever the key.
+      - name: Identify what the tiles will contain
         id: model
         working-directory: site
-        run: echo "run=$(python3 scripts/fetch-currents.py --run)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "run=$(python3 scripts/fetch-currents.py --run)" >> "$GITHUB_OUTPUT"
+          echo "currents=$(python3 scripts/fetch-currents.py --tile-key)" >> "$GITHUB_OUTPUT"
+          echo "fields=$(python3 scripts/fetch-ocean-fields.py --tile-key)" >> "$GITHUB_OUTPUT"
 
       - name: Restore current tiles
         id: tiles
         uses: actions/cache@v4
         with:
+          # Globs, because the non-base frame's directory is named for its
+          # lead and the lead now moves with the run's lateness — there is no
+          # fixed name to list. Without them the second frame's tiles are
+          # rebuilt from HYCOM every window however well the cache hits.
           path: |
             site/public/map/tiles
             site/public/map/tiles-60m
+            site/public/map/tiles-f*h
+            site/public/map/tiles-60m-f*h
+          # v4: the key names the run and every valid time built from it, and
+          # the currents publish two frames per window rather than one. A v3
+          # hit would restore a single frame's tiles under a header that
+          # advertises two, so the forecast control would offer an hour whose
+          # tiles 404 and the map would quietly fall back to the coarse grid.
+          #
           # v3: leads are counted from the model run now, so the *same* run
-          # builds T+36 where it used to build T+0. The key names the run and
+          # builds T+36 where it used to build T+0. The key named the run and
           # nothing else, so a v2 hit would restore a nowcast tile set and
-          # publish it under a forecast header — the right run, the wrong
-          # hour, and nothing on screen to say so. The cache is an input to
-          # what gets served, not just a time saver, so a change in what the
-          # tiles *contain* has to move the key.
-          key: currents-tiles-v3-${{ steps.model.outputs.run }}
+          # publish it under a forecast header. The cache is an input to what
+          # gets served, not just a time saver, so a change in what the tiles
+          # *contain* has to move the key.
+          key: currents-tiles-v4-${{ steps.model.outputs.currents }}
 
       - name: Build current tiles
         if: steps.model.outputs.run != '' && steps.tiles.outputs.cache-hit != 'true'
@@ -150,6 +225,12 @@ jobs:
             site/public/map/tiles-sss-navy
             site/public/map/tiles-sic-navy
             site/public/map/tiles-sit-navy
+          # v6: the fields choose their step by valid time now, so their key
+          # is their own — `fetch-ocean-fields.py --tile-key`, naming every
+          # tiled product's run and hour — rather than the currents' run. It
+          # moves four times a day instead of once, which is the cost of the
+          # tiles being the hour the grids are.
+          #
           # v5: ice thickness is a fourth tile set, and it replaced the ice
           # edge — which was a contour, published as one file and never
           # cached, so nothing has to be removed here. The v4 note below
@@ -166,10 +247,10 @@ jobs:
           # grid for ice and says nothing. Same reasoning as v3 below: the
           # cache is an input to what gets served, so a change in what the
           # tiles contain has to move the key.
-          key: field-tiles-v5-${{ steps.model.outputs.run }}
+          key: field-tiles-v6-${{ steps.model.outputs.fields }}
 
       - name: Build field tiles
-        if: steps.model.outputs.run != '' && steps.fieldtiles.outputs.cache-hit != 'true'
+        if: steps.model.outputs.fields != '' && steps.fieldtiles.outputs.cache-hit != 'true'
         working-directory: site
         run: python3 scripts/fetch-ocean-fields.py --tiles
 
