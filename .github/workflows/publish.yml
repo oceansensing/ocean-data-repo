@@ -72,7 +72,8 @@ jobs:
                    currents-atlantic.json currents-arctic.json \
                    currents-atlantic-60m.json currents-arctic-60m.json \
                    sst-oisst.json sst-navy.json sss-navy.json \
-                   wind.json wind-atlantic.json wind-arctic.json; do
+                   wind.json wind-atlantic.json wind-arctic.json \
+                   air.json air-atlantic.json air-arctic.json; do
             if curl -fsS --max-time 120 "$base/$f" -o "site/public/map/$f"; then
               got=$((got + 1))
             else
