@@ -72,8 +72,7 @@ jobs:
                    currents-atlantic.json currents-arctic.json \
                    currents-atlantic-60m.json currents-arctic-60m.json \
                    sst-oisst.json sst-navy.json sss-navy.json \
-                   wind.json wind-atlantic.json wind-arctic.json \
-                   air.json; do
+                   wind.json air.json; do
             if curl -fsS --max-time 120 "$base/$f" -o "site/public/map/$f"; then
               got=$((got + 1))
             else
@@ -155,9 +154,10 @@ jobs:
       # ECMWF publishes four runs a day and lands them within hours, so
       # unlike the ESPC fields this one is a nowcast: the step nearest now,
       # off the freshest run that has published it. Nothing to cache — the
-      # files change every run, and the largest of them is the 2 m air
-      # temperature at 5 MB, which is the model's own 0.25 degrees globally
-      # and is fetched only by a reader who switches that layer on.
+      # two files change every run. They are the model's own 0.25 degrees
+      # globally, so they are the largest single grids published here at
+      # 9 MB of wind and 5 MB of air temperature, and each is fetched only
+      # by a reader who switches that layer on.
       - name: 10 m wind and 2 m air temperature
         working-directory: site
         run: python3 scripts/fetch-wind.py
@@ -212,7 +212,16 @@ jobs:
           # publish it under a forecast header. The cache is an input to what
           # gets served, not just a time saver, so a change in what the tiles
           # *contain* has to move the key.
-          key: currents-tiles-v4-${{ steps.model.outputs.currents }}
+          #
+          # v5: the tile tier starts at zoom 5 rather than 7. That changes no
+          # tile — only `index.json`, which the cache restores along with
+          # them — so a v4 hit would republish an index still advertising
+          # minZoom 7 and the map would go on drawing the coarse grid at the
+          # zooms this was meant to fix. Silently, and until the next model
+          # run. The same trap the fields' own key already carries a note
+          # about: what has to move the key is anything that changes what is
+          # *served*, and the index is served.
+          key: currents-tiles-v5-${{ steps.model.outputs.currents }}
 
       - name: Build current tiles
         if: steps.model.outputs.run != '' && steps.tiles.outputs.cache-hit != 'true'
