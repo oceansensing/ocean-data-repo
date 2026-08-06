@@ -73,7 +73,7 @@ jobs:
                    currents-atlantic-60m.json currents-arctic-60m.json \
                    sst-oisst.json sst-navy.json sss-navy.json \
                    wind.json wind-atlantic.json wind-arctic.json \
-                   air.json air-atlantic.json air-arctic.json; do
+                   air.json; do
             if curl -fsS --max-time 120 "$base/$f" -o "site/public/map/$f"; then
               got=$((got + 1))
             else
@@ -155,8 +155,10 @@ jobs:
       # ECMWF publishes four runs a day and lands them within hours, so
       # unlike the ESPC fields this one is a nowcast: the step nearest now,
       # off the freshest run that has published it. Nothing to cache — the
-      # three files are about 3 MB and change every run.
-      - name: 10 m wind
+      # files change every run, and the largest of them is the 2 m air
+      # temperature at 5 MB, which is the model's own 0.25 degrees globally
+      # and is fetched only by a reader who switches that layer on.
+      - name: 10 m wind and 2 m air temperature
         working-directory: site
         run: python3 scripts/fetch-wind.py
 
