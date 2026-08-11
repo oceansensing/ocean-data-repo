@@ -68,10 +68,18 @@ jobs:
           mkdir -p site/public/map
           base=https://oceansensing.org/ocean-data-repo/map
           got=0
-          for f in ocean-assets.json argo.json currents.json currents-60m.json \
-                   currents-atlantic.json currents-arctic.json \
-                   currents-atlantic-60m.json currents-arctic-60m.json \
-                   sst-oisst.json sst-navy.json sss-navy.json \
+          # **The roots only — everything else is seeded from what these
+          # advertise**, by the step below. A hand-kept list of every
+          # published file is a list that falls behind its siblings, and it
+          # had: `sic-oisst.json` was never on it, so when PSL answered a
+          # rate limit the product had no previous file to keep and 404'd
+          # instead. The map offered "SIC (OISST)" against a file that had
+          # never existed, on every run since it was added, with a green
+          # deploy each time. A root is a file nothing else links to.
+          for f in ocean-assets.json argo.json \
+                   currents.json currents-60m.json \
+                   sst-oisst.json sic-oisst.json \
+                   sst-navy.json sss-navy.json sic-navy.json sit-navy.json \
                    wind.json air.json; do
             if curl -fsS --max-time 120 "$base/$f" -o "site/public/map/$f"; then
               got=$((got + 1))
@@ -81,53 +89,6 @@ jobs:
           done
           echo "seeded $got files from the previous publish"
 
-      # The forecast frames, whose filenames are not knowable in advance.
-      #
-      # A non-base frame is named for its lead, and the lead moves with the
-      # run's lateness, so there is no fixed name to put in the list above.
-      # Left unseeded, an ESPC outage would keep a previous `currents.json`
-      # that advertises two frames while only one of them is on disk — the
-      # map would offer an hour whose grid 404s. So the seeded base files are
-      # read for what they advertise, and that is fetched too.
-      - name: Seed the forecast frames the base files advertise
-        continue-on-error: true
-        run: |
-          python3 - <<'PY'
-          import json, pathlib, urllib.request
-          BASE = 'https://oceansensing.org/ocean-data-repo/map'
-          d = pathlib.Path('site/public/map')
-
-          def grab(name):
-              """Fetch one published file, returning its header or None."""
-              try:
-                  with urllib.request.urlopen(f'{BASE}/{name}', timeout=120) as r:
-                      body = r.read()
-              except Exception as exc:
-                  print(f'  no previous {name} ({exc})')
-                  return None
-              (d / name).write_bytes(body)
-              return json.loads(body)[0]['header']
-
-          got = 0
-          for stem in ('currents.json', 'currents-60m.json'):
-              if not (d / stem).exists():
-                  continue
-              for frame in json.loads((d / stem).read_text())[0]['header'].get('forecast', []):
-                  name = frame['url'].rsplit('/', 1)[-1]
-                  if name == stem:
-                      continue
-                  # The frame first, then whatever *it* says its regions are:
-                  # they carry its lead in their names, so only the frame's
-                  # own header knows them.
-                  head = grab(name)
-                  if not head:
-                      continue
-                  got += 1
-                  for region in head.get('details', []):
-                      if grab(region['url'].rsplit('/', 1)[-1]):
-                          got += 1
-          print(f'seeded {got} forecast-frame files from the previous publish')
-          PY
 
       # The one exception to "no Python dependencies", and it is the format
       # rather than the effort: ECMWF packs its open GRIB2 with CCSDS/AEC
@@ -161,6 +122,101 @@ jobs:
       - name: 10 m wind and 2 m air temperature
         working-directory: site
         run: python3 scripts/fetch-wind.py
+
+      # Anything the roots advertise that is not on disk: regional grids,
+      # forecast frames, and each frame's own regions.
+      #
+      # **After the pipelines, not before, and that is what makes it free.**
+      # As a pre-seed it downloaded every advertised file on every run and
+      # the pipelines then overwrote almost all of them — measured against
+      # the live site, 58.6 MB pulled where the roots alone are 7.9 MB. Run
+      # here it fetches nothing at all on a healthy run, because everything
+      # advertised has just been written, and it fetches exactly the gaps
+      # when a product fails. The roots still seed *before* the pipelines:
+      # a root is what keeps a failed product on the map at all, and it is
+      # also what this reads to know which links to check.
+      #
+      # **Two reasons this is a walk rather than a list.** A non-base frame is
+      # named for its lead, and the lead moves with the run's lateness, so
+      # there is no fixed name to write down. And a list of the *fixed* names
+      # is a list that falls behind: the Southern Ocean currents band was
+      # added upstream and nothing here knew, exactly as `sic-oisst.json` was
+      # added and nothing here knew.
+      #
+      # Left unseeded, an outage keeps a previous root that advertises links
+      # to files not on disk — the map offering an hour, or a region, whose
+      # grid 404s.
+      - name: Backfill anything advertised but missing
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, urllib.request
+          BASE = 'https://oceansensing.org/ocean-data-repo/map'
+          d = pathlib.Path('site/public/map')
+
+          def grab(name):
+              """Fetch one published file, returning its header or None."""
+              try:
+                  with urllib.request.urlopen(f'{BASE}/{name}', timeout=120) as r:
+                      body = r.read()
+              except Exception as exc:
+                  print(f'  no previous {name} ({exc})')
+                  return None
+              (d / name).write_bytes(body)
+              doc = json.loads(body)
+              return (doc[0] if isinstance(doc, list) else doc)['header']
+
+          def header_of(doc):
+              """A velocity file is a two-element array; a scalar is an object.
+
+              Both carry the same header, and getting this wrong is how a
+              field's regions would be silently skipped while the currents'
+              were seeded.
+              """
+              return (doc[0] if isinstance(doc, list) else doc)['header']
+
+          def links(head):
+              for d_ in head.get('details', []):
+                  yield d_['url'].rsplit('/', 1)[-1]
+              for f_ in head.get('forecast', []):
+                  yield f_['url'].rsplit('/', 1)[-1]
+
+          # **What is on disk, not what the loop has visited.** Tracking the
+          # latter re-fetched six files that were already there, because the
+          # walk is alphabetical and `currents-60m.json` sorts before the
+          # regions it links to. Harmless while this ran before the pipelines;
+          # here it would have overwritten a freshly built grid with the
+          # previous publish's copy — a stale region under a current global,
+          # which is the one thing the whole seeding arrangement exists to
+          # avoid.
+          tried = set()
+
+          def missing(name):
+              """Fetch a link only if the pipelines did not already write it."""
+              if name in tried or (d / name).exists():
+                  return None
+              tried.add(name)
+              return grab(name)
+
+          got = 0
+          for stem in sorted(f.name for f in d.glob('*.json')):
+              try:
+                  head = header_of(json.loads((d / stem).read_text()))
+              except Exception:
+                  continue          # ocean-assets and argo carry no header
+              for name in links(head):
+                  # The frame or region first, then whatever *it* advertises:
+                  # a frame's regions carry its lead in their names, so only
+                  # the frame's own header knows them.
+                  sub = missing(name)
+                  if not sub:
+                      continue
+                  got += 1
+                  for deeper in links(sub):
+                      if missing(deeper):
+                          got += 1
+          print(f'backfilled {got} advertised file(s) the pipelines did not write')
+          PY
 
       # What the tiles contain, as a cache key: the model run **and every
       # valid time built from it**.
