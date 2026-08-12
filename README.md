@@ -66,7 +66,11 @@ counted the same way — hours after its own run.
 
 ## Cadence
 
-**Hourly at :05 for everything, and :25 and :45 for the storms alone.**
+**Hourly at :05 for everything, and :25 and :45 for the storms alone** —
+nominally. GitHub dispatches scheduled workflows late, measured on this
+repository at **19 to 37 minutes** past the cron time over fourteen
+consecutive runs, so read those as three publishes an hour rather than as
+clock times.
 
 The full run is hourly, offset from the hour. The ocean model runs once a day
 at 12Z, so most runs republish the same model output against a fresher clock;

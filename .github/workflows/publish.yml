@@ -11,9 +11,19 @@ name: Publish ocean data
 # watches or warnings are up, and a special advisory or outlook whenever a
 # forecaster judges one is needed. Against an hourly publish that is up to an
 # hour of avoidable lag on the one product here that is read while it matters.
-# Twenty minutes is the interval and it is a *cost* decision rather than a
-# physical one — three deploys an hour instead of one — so it is one cron line
-# to change if that turns out to be the wrong trade.
+# Three deploys an hour instead of one; it is a *cost* decision rather than a
+# physical one, so it is one cron line to change if that is the wrong trade.
+#
+# **What these times are not is when the runs happen.** GitHub queues
+# scheduled workflows and dispatches them late — measured over fourteen
+# consecutive runs of this repository on 2026-08-12, between **19 and 37
+# minutes** after the nominal time, median about 27. So the three crons buy
+# three publishes an hour rather than three *evenly spaced* publishes an hour:
+# the delay is applied per run and varies, so two can land close together and
+# the gap either side of them stretches. The average staleness still falls by
+# roughly the factor the count suggests, which is the whole of what this is
+# for — but nothing downstream should be written as though a publish lands at
+# :25.
 #
 # A light run skips every model fetch: no HYCOM, no ECMWF, no tile builds. It
 # seeds the rest of the tree from the last publish exactly as the full run
