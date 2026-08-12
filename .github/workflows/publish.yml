@@ -127,7 +127,8 @@ jobs:
                    currents.json currents-60m.json \
                    sst-oisst.json sic-oisst.json \
                    sst-navy.json sss-navy.json sic-navy.json sit-navy.json \
-                   wind.json air.json waves.json; do
+                   wind.json air.json waves.json \
+                   wsp34.json wsp50.json wsp64.json; do
             if curl -fsS --max-time 120 "$base/$f" -o "site/public/map/$f"; then
               got=$((got + 1))
             else
