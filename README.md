@@ -66,6 +66,27 @@ counted the same way — hours after its own run.
 
 ## Cadence
 
-Hourly, offset from the hour. The ocean model runs once a day at 12Z, so most
-runs republish the same model output against a fresher clock; the tiles are
-rebuilt only when the run advances.
+**Hourly at :05 for everything, and :25 and :45 for the storms alone.**
+
+The full run is hourly, offset from the hour. The ocean model runs once a day
+at 12Z, so most runs republish the same model output against a fresher clock;
+the tiles are rebuilt only when the run advances.
+
+The two light runs exist because the National Hurricane Center does not
+publish on this schedule: an advisory every three hours, every two once
+watches or warnings are up, and a special advisory or outlook whenever a
+forecaster judges one is needed. Against an hourly publish that is up to an
+hour of avoidable lag on the product most likely to be read while it matters.
+
+A light run fetches the storms, the saildrones, the gliders and the floats,
+and nothing else — no HYCOM, no ECMWF, no tile builds. Everything else is
+seeded from the previous publish, which is the same machinery that already
+degrades an upstream outage into stale data rather than a blank layer. So
+what it deploys is this hour's ocean under a fresher set of storms.
+
+It restores the tile caches even though it does not build them: GitHub Pages
+replaces the whole site on every deploy, so a tree assembled without them is
+one where every reader past zoom 4 silently drops to the coarse grid. If the
+cache misses outright the light run **skips its own deploy** rather than
+publishing the gap — the previous publish stays up, the storms are then up to
+another twenty minutes old, and the :05 run rebuilds regardless.

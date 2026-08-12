@@ -1,11 +1,28 @@
 name: Publish ocean data
 
-# Hourly, offset from the hour because scheduled runs bunch up at :00. The
-# site's own deploy runs at :17, so this runs at :05 — far enough ahead that a
-# site build finds fresh data waiting rather than racing this one.
+# Two cadences, one workflow.
+#
+# **:05 is the full run** — offset from the hour because scheduled runs bunch
+# up at :00, and ahead of the site's own deploy at :17 so a site build finds
+# fresh data waiting rather than racing this one.
+#
+# **:25 and :45 refresh the storms and the platforms only.** The NHC does not
+# publish on our schedule: an advisory every three hours, every two once
+# watches or warnings are up, and a special advisory or outlook whenever a
+# forecaster judges one is needed. Against an hourly publish that is up to an
+# hour of avoidable lag on the one product here that is read while it matters.
+# Twenty minutes is the interval and it is a *cost* decision rather than a
+# physical one — three deploys an hour instead of one — so it is one cron line
+# to change if that turns out to be the wrong trade.
+#
+# A light run skips every model fetch: no HYCOM, no ECMWF, no tile builds. It
+# seeds the rest of the tree from the last publish exactly as the full run
+# already does for an outage, so what it deploys is this hour's ocean with a
+# fresher set of storms on top. See `light` below.
 on:
   schedule:
     - cron: '5 * * * *'
+    - cron: '25,45 * * * *'
   workflow_dispatch:
   push:
     branches: [main]
@@ -47,6 +64,26 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      # Which kind of run this is, decided once and read by every step below.
+      #
+      # **`github.event.schedule` is the literal cron string**, so the two
+      # entries above are what distinguishes them — there is no other signal,
+      # and a `workflow_dispatch` or a push carries none at all. Those default
+      # to a **full** run, which is the safe direction: a manual run is almost
+      # always somebody checking that the whole thing still works, and a light
+      # run that was meant to be full publishes a tree an hour older than the
+      # operator expected with nothing saying so.
+      - name: Decide what kind of run this is
+        id: mode
+        run: |
+          if [ "${{ github.event.schedule }}" = "25,45 * * * *" ]; then
+            echo "light=true" >> "$GITHUB_OUTPUT"
+            echo "A light run: storms and platforms only, everything else seeded."
+          else
+            echo "light=false" >> "$GITHUB_OUTPUT"
+            echo "A full run: every pipeline."
+          fi
 
       # Seed with what is already published, and this is not an optimisation.
       #
@@ -96,7 +133,10 @@ jobs:
       # library can decode. eccodes ships binary wheels with the library
       # bundled, so this is a pip install and not an apt one. Every other
       # pipeline below still needs nothing.
+      # A light run calls neither ECMWF pipeline, so it needs neither the
+      # install nor the ~40 s it takes.
       - name: Install the ECMWF pipelines' dependency
+        if: steps.mode.outputs.light != 'true'
         run: pip install -r site/scripts/requirements-wind.txt
 
       # Standard library only, by design — see the header of each script.
@@ -105,10 +145,12 @@ jobs:
         run: python3 scripts/fetch-ocean-assets.py
 
       - name: Currents, surface and 60 m
+        if: steps.mode.outputs.light != 'true'
         working-directory: site
         run: python3 scripts/fetch-currents.py
 
       - name: Sea-surface temperature and salinity
+        if: steps.mode.outputs.light != 'true'
         working-directory: site
         run: python3 scripts/fetch-ocean-fields.py
 
@@ -120,6 +162,7 @@ jobs:
       # 9 MB of wind and 5 MB of air temperature, and each is fetched only
       # by a reader who switches that layer on.
       - name: 10 m wind and 2 m air temperature
+        if: steps.mode.outputs.light != 'true'
         working-directory: site
         run: python3 scripts/fetch-wind.py
 
@@ -134,6 +177,7 @@ jobs:
       # and like both of those it is fetched only by a reader who switches
       # the layer on. Nothing to cache: the file changes every run.
       - name: Significant wave height
+        if: steps.mode.outputs.light != 'true'
         working-directory: site
         run: python3 scripts/fetch-waves.py
 
@@ -249,6 +293,13 @@ jobs:
       # an extra layer of indirection.
       #
       # Both flags print progress to stderr, so stdout is only ever the key.
+      # **A light run still restores the tiles; it only skips building
+      # them.** Pages replaces the whole site on every deploy, so a tree
+      # assembled without them is a tree where every reader past zoom 4
+      # silently drops to the coarse grid. The probe is a HYCOM read of
+      # about 1.5 s and it is what produces the cache key, so it runs in
+      # both modes — the cheap half of the tile machinery, not the
+      # expensive one.
       - name: Identify what the tiles will contain
         id: model
         working-directory: site
@@ -292,9 +343,24 @@ jobs:
           # about: what has to move the key is anything that changes what is
           # *served*, and the index is served.
           key: currents-tiles-v5-${{ steps.model.outputs.currents }}
+          # **A light run takes the newest tiles it can get; a full run takes
+          # an exact match or builds.** The difference is what each is holding
+          # them against. A full run has just fetched a fresh grid, so a
+          # near-miss set belongs to some other hour and rebuilding is the
+          # point. A light run fetched no grid at all — the ones on disk are
+          # the previous publish's, seeded — so the newest cached tiles are
+          # exactly the tiles those grids were published with.
+          #
+          # Scoped rather than set for both, because a prefix restore reports
+          # `cache-hit: false`: on a full run that would leave a stale set on
+          # disk *and* build over it, and only the directories the build
+          # writes get overwritten — a lead that had since moved would keep
+          # its old directory and be published beside the new one.
+          restore-keys: ${{ steps.mode.outputs.light == 'true' && 'currents-tiles-v5-' || '' }}
 
       - name: Build current tiles
-        if: steps.model.outputs.run != '' && steps.tiles.outputs.cache-hit != 'true'
+        if: steps.mode.outputs.light != 'true'
+          && steps.model.outputs.run != '' && steps.tiles.outputs.cache-hit != 'true'
         working-directory: site
         run: python3 scripts/fetch-currents.py --tiles
 
@@ -330,9 +396,12 @@ jobs:
           # cache is an input to what gets served, so a change in what the
           # tiles contain has to move the key.
           key: field-tiles-v6-${{ steps.model.outputs.fields }}
+          # Same argument as the currents' above.
+          restore-keys: ${{ steps.mode.outputs.light == 'true' && 'field-tiles-v6-' || '' }}
 
       - name: Build field tiles
-        if: steps.model.outputs.fields != '' && steps.fieldtiles.outputs.cache-hit != 'true'
+        if: steps.mode.outputs.light != 'true'
+          && steps.model.outputs.fields != '' && steps.fieldtiles.outputs.cache-hit != 'true'
         working-directory: site
         run: python3 scripts/fetch-ocean-fields.py --tiles
 
@@ -354,7 +423,44 @@ jobs:
       # rebuilt in CI anyway (the isobaths need a 7.5 GB GEBCO grid) — then
       # the fetched half over the top. Fetched wins on any collision, which is
       # what makes a stale committed copy harmless rather than sticky.
+      # **A light run must never publish a tree with no tiles in it**, and
+      # without this it could. Pages replaces the whole site on every deploy,
+      # so the tiles are not "kept" between publishes — they are re-uploaded
+      # every time, out of whatever the cache restored. A light run does not
+      # build them, so if the cache misses entirely there is nothing on disk
+      # and the deploy would quietly drop ~500 MB of tiles: every reader past
+      # zoom 4 falls back to the coarse grid, with no error anywhere.
+      #
+      # The prefix restore above makes a total miss unlikely rather than
+      # impossible — a brand new cache generation, an eviction, a first run
+      # after a key version bump. So the light run checks, and **skips its own
+      # deploy** rather than publishing the gap. Nothing is lost by skipping:
+      # the previous publish stays up, the storms are then up to another
+      # twenty minutes old, and the full run at :05 rebuilds regardless.
+      #
+      # A full run is deliberately not gated on this. It builds what it does
+      # not restore, so an empty directory there means the build failed, and
+      # the pipelines already fail the run for that — a second guard would
+      # only mask which one spoke first.
+      - name: Refuse to publish a light run with no tiles
+        id: gap
+        run: |
+          set -uo pipefail
+          publish=true
+          if [ "${{ steps.mode.outputs.light }}" = "true" ]; then
+            for d in tiles tiles-60m tiles-sst-navy; do
+              if [ ! -d "site/public/map/$d" ] || [ -z "$(ls -A "site/public/map/$d" 2>/dev/null)" ]; then
+                echo "::warning::$d is empty — skipping this light publish rather than"
+                echo "::warning::deploying a tree without it. The :05 run rebuilds."
+                publish=false
+              fi
+            done
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "publishing: $publish"
+
       - name: Assemble the site
+        if: steps.gap.outputs.publish == 'true'
         run: |
           mkdir -p out/map
           cp -r map/. out/map/
@@ -367,8 +473,11 @@ jobs:
           find out -name index.json | wc -l | xargs echo "tile indexes:"
 
       - uses: actions/configure-pages@v5
+        if: steps.gap.outputs.publish == 'true'
       - uses: actions/upload-pages-artifact@v3
+        if: steps.gap.outputs.publish == 'true'
         with:
           path: out
       - id: deploy
+        if: steps.gap.outputs.publish == 'true'
         uses: actions/deploy-pages@v4
