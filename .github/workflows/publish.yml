@@ -80,7 +80,7 @@ jobs:
                    currents.json currents-60m.json \
                    sst-oisst.json sic-oisst.json \
                    sst-navy.json sss-navy.json sic-navy.json sit-navy.json \
-                   wind.json air.json; do
+                   wind.json air.json waves.json; do
             if curl -fsS --max-time 120 "$base/$f" -o "site/public/map/$f"; then
               got=$((got + 1))
             else
@@ -90,13 +90,13 @@ jobs:
           echo "seeded $got files from the previous publish"
 
 
-      # The one exception to "no Python dependencies", and it is the format
+      # The exception to "no Python dependencies", and it is the format
       # rather than the effort: ECMWF packs its open GRIB2 with CCSDS/AEC
       # (data representation template 5.42), which nothing in the standard
       # library can decode. eccodes ships binary wheels with the library
       # bundled, so this is a pip install and not an apt one. Every other
       # pipeline below still needs nothing.
-      - name: Install the wind pipeline's dependency
+      - name: Install the ECMWF pipelines' dependency
         run: pip install -r site/scripts/requirements-wind.txt
 
       # Standard library only, by design — see the header of each script.
@@ -122,6 +122,20 @@ jobs:
       - name: 10 m wind and 2 m air temperature
         working-directory: site
         run: python3 scripts/fetch-wind.py
+
+      # ECWAM is ECMWF's wave model, run beside the IFS above — but published
+      # into its own stream, with its own index and its own GRIB, so it is a
+      # second script rather than two more range reads into the first. It
+      # needs no install of its own: the requirements above already carry
+      # eccodes, which is the only thing either script wants.
+      #
+      # Masked to the ocean, unlike the two atmospheric fields, because there
+      # are no waves on land — so it is 4.4 MB where the air temperature is 5,
+      # and like both of those it is fetched only by a reader who switches
+      # the layer on. Nothing to cache: the file changes every run.
+      - name: Significant wave height
+        working-directory: site
+        run: python3 scripts/fetch-waves.py
 
       # Anything the roots advertise that is not on disk: regional grids,
       # forecast frames, and each frame's own regions.
