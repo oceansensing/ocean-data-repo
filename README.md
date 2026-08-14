@@ -3,6 +3,14 @@
 Real-time ocean data, fetched on a schedule and published as static JSON for
 [oceansensing.org](https://oceansensing.org) to draw.
 
+**A successor exists and this repository is on the retirement path.**
+[`realtime-data-repo`](https://github.com/oceansensing/realtime-data-repo)
+publishes the same contract from a rebuilt pipeline — products with
+per-run fates, a published health record, per-product failure isolation —
+and the development visualizer already reads it. The production map reads
+this repository until cutover; nothing here changes until then, and the
+design case for the successor is written in its README.
+
 **This is not a public service.** The repository is public because GitHub
 Pages requires it, not as an offer. There is no stability guarantee, no
 versioning, no notice before a file changes shape or disappears, and no
