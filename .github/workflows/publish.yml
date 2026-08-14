@@ -488,8 +488,14 @@ jobs:
           # matches nothing exits 1 — which is the *ordinary* case here, so
           # without it the publish would fail exactly when there was nothing
           # wrong to withdraw.
+          # Recorded as well as removed, because the gap guard below has to be
+          # able to tell a tier that was withdrawn *on purpose* from one that
+          # is missing because a restore failed. Those want opposite answers
+          # and the directory looks identical either way.
+          : > /tmp/withdrawn.txt
           grep '^ACTION drop-tiles ' /tmp/contract.log 2>/dev/null | awk '{print $3}' | while read -r idx; do
             dir="public/map/$(dirname "$idx")"
+            basename "$(dirname "$idx")" >> /tmp/withdrawn.txt
             echo "::warning title=Tile tier withdrawn::$dir did not match its grid and was not published"
             rm -rf "$dir"
           done || true
@@ -551,6 +557,17 @@ jobs:
           publish=true
           if [ "${{ steps.mode.outputs.light }}" = "true" ]; then
             for d in tiles tiles-60m tiles-sst-navy; do
+              # **Withdrawn on purpose is not the same as missing**, and this
+              # guard could not tell them apart the first time the quarantine
+              # ran: it dropped two mismatched tiers exactly as intended, this
+              # saw empty directories, refused the publish, and the map stayed
+              # sixteen hours stale to avoid a fallback it had just been asked
+              # for. The rule below was written for a *failed restore*; that
+              # reasoning still holds and this case is simply not it.
+              if grep -qx "$d" /tmp/withdrawn.txt 2>/dev/null; then
+                echo "::notice::$d was withdrawn by the contract on purpose — publishing without it, the map falls back to the coarse grid"
+                continue
+              fi
               if [ ! -d "site/public/map/$d" ] || [ -z "$(ls -A "site/public/map/$d" 2>/dev/null)" ]; then
                 echo "::warning::$d is empty — skipping this light publish rather than"
                 echo "::warning::deploying a tree without it. The :05 run rebuilds."
