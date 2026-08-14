@@ -480,18 +480,42 @@ jobs:
             exit 1
           fi
 
-          # Withdraw what it named. A tile index whose hour is not its grid's
-          # is dropped, so the map 404s on the finer tier and falls back to the
-          # regional grid — the same picture, arrived at by something a person
-          # can see, instead of a frozen map.
-          grep '^ACTION drop-tiles ' /tmp/contract.log | awk '{print $3}' | while read -r idx; do
+          # Withdrawals that take something away. A tile index whose hour is
+          # not its grid's is dropped, so the map 404s on the finer tier and
+          # falls back to the regional grid — the same picture, arrived at by
+          # something a person can see, instead of a frozen map.
+          # `|| true`, because the default shell is `bash -e` and a grep that
+          # matches nothing exits 1 — which is the *ordinary* case here, so
+          # without it the publish would fail exactly when there was nothing
+          # wrong to withdraw.
+          grep '^ACTION drop-tiles ' /tmp/contract.log 2>/dev/null | awk '{print $3}' | while read -r idx; do
             dir="public/map/$(dirname "$idx")"
             echo "::warning title=Tile tier withdrawn::$dir did not match its grid and was not published"
             rm -rf "$dir"
-          done
+          done || true
 
-          # And prove the remainder holds, in the ordinary blocking mode.
-          node scripts/test-schema.mjs
+          # Withdrawals that take nothing away, because the layer is honest and
+          # merely behind: it states its own valid time, its tiles match it, and
+          # the map draws every layer with the hour it came from. Publishing it
+          # costs a second ESPC credit line, which is what the run stamp exists
+          # to explain. Not publishing it costs the whole map, which is what
+          # sixteen hours of this taught.
+          grep '^ACTION stale-layer ' /tmp/contract.log 2>/dev/null | cut -d' ' -f3- | while read -r what; do
+            echo "::warning title=Layer out of step::$what — published with its own valid time rather than held back"
+          done || true
+
+          # And prove what is left stands up. Quarantine again rather than the
+          # blocking mode: the announced problems are still there on purpose, so
+          # a blocking pass would simply refuse everything a second time. What
+          # this asks is whether the *withdrawals* broke anything new — a grid
+          # left advertising a tile index that is now gone, say.
+          if node scripts/test-schema.mjs --quarantine > /tmp/contract2.log 2>&1; then
+            cat /tmp/contract2.log
+          else
+            cat /tmp/contract2.log
+            echo "::error::withdrawing what the contract named did not leave a publishable tree"
+            exit 1
+          fi
 
       # Assemble what actually gets served. `map/` at the root, so a consumer
       # points dataBase at <pages url>/map/ and every path inside the files
