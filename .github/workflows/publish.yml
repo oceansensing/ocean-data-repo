@@ -346,7 +346,16 @@ jobs:
 
       - name: Restore current tiles
         id: tiles
-        uses: actions/cache@v4
+        # **Restore, never save.** `actions/cache` saves in its post step
+        # whenever the *primary* key did not hit — which includes a light
+        # run's prefix restore. That is how the current tiles were lost: a
+        # light run restored an old set by prefix, the contract withdrew two
+        # mismatched tiers exactly as intended, and the post step then saved
+        # an entry under the full key with those directories *deleted*. The
+        # next full run hit that key, skipped the build, and published with no
+        # current tiles at all — and because the key hits, it could never heal
+        # on its own. Saving is now explicit and only after a real build.
+        uses: actions/cache/restore@v4
         with:
           # Globs, because the non-base frame's directory is named for its
           # lead and the lead now moves with the run's lateness — there is no
@@ -378,7 +387,7 @@ jobs:
           # run. The same trap the fields' own key already carries a note
           # about: what has to move the key is anything that changes what is
           # *served*, and the index is served.
-          key: currents-tiles-v5-${{ steps.model.outputs.currents }}
+          key: currents-tiles-v6-${{ steps.model.outputs.currents }}
           # **A light run takes the newest tiles it can get; a full run takes
           # an exact match or builds.** The difference is what each is holding
           # them against. A full run has just fetched a fresh grid, so a
@@ -392,17 +401,35 @@ jobs:
           # disk *and* build over it, and only the directories the build
           # writes get overwritten — a lead that had since moved would keep
           # its old directory and be published beside the new one.
-          restore-keys: ${{ steps.mode.outputs.light == 'true' && 'currents-tiles-v5-' || '' }}
+          restore-keys: ${{ steps.mode.outputs.light == 'true' && 'currents-tiles-v6-' || '' }}
 
       - name: Build current tiles
+        id: build-tiles
         if: steps.mode.outputs.light != 'true'
           && steps.model.outputs.run != '' && steps.tiles.outputs.cache-hit != 'true'
         working-directory: site
         run: python3 scripts/fetch-currents.py --tiles
 
+      # Only what a build actually produced is worth keeping, which is the
+      # whole point of splitting restore from save: nothing a light run holds
+      # — restored by prefix, possibly withdrawn from — can reach the cache.
+      - name: Keep the current tiles just built
+        if: steps.build-tiles.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            site/public/map/tiles
+            site/public/map/tiles-60m
+            site/public/map/tiles-f*h
+            site/public/map/tiles-60m-f*h
+          key: ${{ steps.tiles.outputs.cache-primary-key }}
+
       - name: Restore field tiles
         id: fieldtiles
-        uses: actions/cache@v4
+        # Restore, never save — the same hazard the currents' cache above
+        # explains, and the same fix. A light run must not be able to write
+        # what it merely restored and may have had withdrawn from.
+        uses: actions/cache/restore@v4
         with:
           path: |
             site/public/map/tiles-sst-navy
@@ -431,15 +458,27 @@ jobs:
           # grid for ice and says nothing. Same reasoning as v3 below: the
           # cache is an input to what gets served, so a change in what the
           # tiles contain has to move the key.
-          key: field-tiles-v6-${{ steps.model.outputs.fields }}
+          key: field-tiles-v7-${{ steps.model.outputs.fields }}
           # Same argument as the currents' above.
-          restore-keys: ${{ steps.mode.outputs.light == 'true' && 'field-tiles-v6-' || '' }}
+          restore-keys: ${{ steps.mode.outputs.light == 'true' && 'field-tiles-v7-' || '' }}
 
       - name: Build field tiles
+        id: build-fieldtiles
         if: steps.mode.outputs.light != 'true'
           && steps.model.outputs.fields != '' && steps.fieldtiles.outputs.cache-hit != 'true'
         working-directory: site
         run: python3 scripts/fetch-ocean-fields.py --tiles
+
+      - name: Keep the field tiles just built
+        if: steps.build-fieldtiles.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            site/public/map/tiles-sst-navy
+            site/public/map/tiles-sss-navy
+            site/public/map/tiles-sic-navy
+            site/public/map/tiles-sit-navy
+          key: ${{ steps.fieldtiles.outputs.cache-primary-key }}
 
       # The gate. The map reads these files against schema.ts, and a shape
       # that drifts shows up as a blank or wrong layer rather than an error —
