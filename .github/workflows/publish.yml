@@ -108,6 +108,12 @@ jobs:
       # So the last publish is downloaded back over the empty directory
       # first. Best effort: on the very first run there is nothing to fetch
       # and the pipelines simply start cold, which is correct.
+      # Node is set up here rather than beside the contract check because
+      # the seed below asks the contract which files are roots, and that
+      # runs long before anything is validated.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Seed from the last publish
         continue-on-error: true
         run: |
@@ -123,12 +129,31 @@ jobs:
           # instead. The map offered "SIC (OISST)" against a file that had
           # never existed, on every run since it was added, with a green
           # deploy each time. A root is a file nothing else links to.
-          for f in ocean-assets.json argo.json \
-                   currents.json currents-60m.json \
-                   sst-oisst.json sic-oisst.json \
-                   sst-navy.json sss-navy.json sic-navy.json sit-navy.json \
-                   wind.json air.json waves.json \
-                   wsp34.json wsp50.json wsp64.json; do
+          # **Asked of the contract rather than written out here**, because
+          # this list was kept by hand in two repositories and drifted. The
+          # anomaly shipped and `ssta-oisst.json` was never added, so every
+          # light run seeded a tree missing a required file and the publish
+          # was refused — measured 2026-08-13, 21 of the last 24 runs failed
+          # and the :25/:45 storm refreshes had not published since the day
+          # the anomaly landed. Silently, because the full run at :05 kept
+          # succeeding and masked it.
+          #
+          # The comment above already records this happening once, with
+          # `sic-oisst.json`, and the fix then was to add the missing name.
+          # That is the fix that does not hold. There is one array now and it
+          # sits next to the check that enforces it, so a root that must be
+          # seeded and a root that must be published cannot disagree.
+          # Captured rather than inlined into the loop: `$(...)` that fails
+          # expands to nothing, and a `for` over nothing seeds nothing and
+          # says so in neither the log nor the exit code — this step is
+          # continue-on-error by design, so the next thing to notice would be
+          # the contract refusing a tree with every root missing. An empty
+          # answer is now a sentence.
+          roots=$(node site/scripts/test-schema.mjs --roots) || roots=''
+          if [ -z "$roots" ]; then
+            echo "! could not ask the contract which files are roots" >&2
+          fi
+          for f in $roots; do
             if curl -fsS --max-time 120 "$base/$f" -o "site/public/map/$f"; then
               got=$((got + 1))
             else
@@ -419,9 +444,6 @@ jobs:
       # The gate. The map reads these files against schema.ts, and a shape
       # that drifts shows up as a blank or wrong layer rather than an error —
       # so nothing publishes unless the contract holds.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - name: Check the data against the published contract
         working-directory: site
         run: node scripts/test-schema.mjs
