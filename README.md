@@ -17,6 +17,10 @@ versioning, no notice before a file changes shape or disappears, and no
 support. If you need this data, go to the sources below — they publish it
 properly and they are who deserve the credit and the traffic.
 
+**License:** the workflow and documentation are copyright (c) 2026 Donglai
+Gong and C4PO, all rights reserved — see [LICENSE.md](LICENSE.md). The
+scientific data belongs to its sources, as above.
+
 ## What is here, and what is not
 
 **The real-time data is never committed.** Currents, temperature, salinity,
