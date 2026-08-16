@@ -104,6 +104,26 @@ jobs:
           repository: oceansensing/oceansensing.github.io
           ref: main
           path: site
+          # **The same grant this repository never had, and it matters more
+          # here than in production.** With no `token:` this uses this
+          # workflow's own `GITHUB_TOKEN`, which holds nothing on the site
+          # repository; it reads it because it is public. If the site goes
+          # private, this checkout 404s.
+          #
+          # This repository is frozen — dispatch-only, kept as the warm
+          # standby that makes "switch back" one string in the site's
+          # `src/config.ts`. So the failure would arrive at the exact moment
+          # somebody reached for the fallback because production was already
+          # broken, which is the worst possible time to discover a missing
+          # credential. A standby that has not been shown to start is not a
+          # standby.
+          #
+          # Falsy-coalesced, so it is a no-op until `PIPELINES_TOKEN` is set
+          # here; needs a fine-grained PAT with Contents: Read-only on the
+          # site repository. Note the secret has to exist on **this**
+          # repository too — secrets do not cross repositories, and setting
+          # it only on realtime-data-repo would leave exactly this hazard.
+          token: ${{ secrets.PIPELINES_TOKEN || github.token }}
 
       - uses: actions/setup-python@v5
         with:

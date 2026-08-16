@@ -19,7 +19,26 @@ is left readable rather than taken down.
 
 What changed is one file: `.github/workflows/publish.yml` lost its schedule
 and its push trigger and kept `workflow_dispatch`, so the pipeline is idle
-but restartable by hand. The freeze is written in that file rather than only
+but restartable by hand.
+
+**And "restartable by hand" has one dependency worth knowing about before
+you need it.** The pipelines are not in this repository — they are checked
+out from `oceansensing/oceansensing.github.io` at run time, and that
+checkout works on *anonymous read*: this workflow's `GITHUB_TOKEN` is scoped
+here and holds no grant on the site repository at all. If the site is ever
+made private, this dispatch 404s before it fetches anything.
+
+That would be discovered at the worst possible moment — reaching for the
+standby precisely because production is already broken. So the workflow now
+carries `token: ${{ secrets.PIPELINES_TOKEN || github.token }}`, which is a
+no-op until the secret exists and needs a fine-grained PAT with Contents:
+Read-only on the site repository. **The secret has to be set on this
+repository too**; secrets do not cross repositories, and setting it only on
+`realtime-data-repo` would leave exactly this hazard in the one place nobody
+is watching. `realtime-data-repo`'s README carries the full order of
+operations.
+
+A standby that has not been shown to start is not a standby. The freeze is written in that file rather than only
 switched off in the Actions UI, because a workflow disabled through the API
 says nothing to someone reading the repository.
 
