@@ -29,13 +29,47 @@ name: Publish ocean data
 # seeds the rest of the tree from the last publish exactly as the full run
 # already does for an outage, so what it deploys is this hour's ocean with a
 # fresher set of storms on top. See `light` below.
+# ---------------------------------------------------------------------------
+# **FROZEN 2026-08-16. This pipeline no longer runs on its own.**
+#
+# `realtime-data-repo` has been production since 2026-08-14 and the site's
+# `MAP_DATA` has pointed at it throughout. This repository was kept publishing
+# afterwards as a warm standby, so that switching back was one string in
+# `src/config.ts` rather than a rebuild. That period is over.
+#
+# **Frozen, not removed.** Nothing is deleted: the history, the committed
+# static data and the last published tree all stand, and GitHub Pages goes on
+# serving that tree unchanged. What stopped is the *publishing* — so the data
+# under it is now a snapshot of 2026-08-16 and ages from here. Anything that
+# reads it is reading a fossil, which is the point of leaving it readable.
+#
+# **Both automatic triggers are gone and `workflow_dispatch` stays.** The
+# schedule is what made it a live pipeline; the manual trigger is what keeps
+# it a restartable fallback. `push` went with the schedule, or the commit that
+# froze this would have published one last time on its way out.
+#
+# **Written here rather than only switched off in the Actions UI**, because a
+# workflow disabled through the API says nothing in the repository: a reader
+# of this file would see three crons and conclude it still runs. The same rule
+# this project applies everywhere else — write the intent where the next
+# component can read it, rather than leaving a state to be inferred.
+#
+# To bring it back: restore the two `cron` lines and the `push` trigger below,
+# and point `MAP_DATA` in the site's `src/config.ts` back at this repository's
+# Pages URL. Both halves are needed — the crons alone would publish a tree
+# nobody reads.
+#
+# The cadence that was in force until the freeze, kept because it is the
+# reasoning a restart would need:
+#
+#   schedule:
+#     - cron: '5 * * * *'        # the full run
+#     - cron: '25,45 * * * *'    # storms and platforms only
+#   push:
+#     branches: [main]
+# ---------------------------------------------------------------------------
 on:
-  schedule:
-    - cron: '5 * * * *'
-    - cron: '25,45 * * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
 
 # No `contents: write`. Nothing here commits, and the token should not be able
 # to: the whole reason this repository exists is that its history does not grow.

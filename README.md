@@ -3,17 +3,29 @@
 Real-time ocean data, fetched on a schedule and published as static JSON for
 [oceansensing.org](https://oceansensing.org) to draw.
 
-**The successor is production now, and this repository is a warm standby.**
+**This repository is frozen. It stopped publishing on 2026-08-16.**
 [`realtime-data-repo`](https://github.com/oceansensing/realtime-data-repo)
 publishes the same contract from a rebuilt pipeline — products with
 per-run fates, a published health record, per-product failure isolation —
-and the site's `MAP_DATA` has pointed at it since 2026-08-14. This
-repository keeps publishing on its own crons for a few days so that
-switching back is a one-line change, and is then to be **frozen, not
-removed**: the publish workflow disabled, everything else left exactly as
-it is — the history, the static data, the published tree — a readable
-record and a restartable fallback. The design case for the successor is
-written in its README.
+and the site's `MAP_DATA` has pointed at it since 2026-08-14. This one kept
+running afterwards as a warm standby, so that switching back was one string
+in `src/config.ts` rather than a rebuild; that period is over.
+
+**Frozen, not removed.** Nothing was deleted. The history, the committed
+static data and the last published tree all stand, and GitHub Pages goes on
+serving that tree — so the data under it is a snapshot of 2026-08-16 and
+ages from here. **Anything reading it is reading a fossil**, which is why it
+is left readable rather than taken down.
+
+What changed is one file: `.github/workflows/publish.yml` lost its schedule
+and its push trigger and kept `workflow_dispatch`, so the pipeline is idle
+but restartable by hand. The freeze is written in that file rather than only
+switched off in the Actions UI, because a workflow disabled through the API
+says nothing to someone reading the repository.
+
+To bring it back, both halves are needed: restore the crons, and point
+`MAP_DATA` back here. The design case for the successor is written in its
+README.
 
 **This is not a public service.** The repository is public because GitHub
 Pages requires it, not as an offer. There is no stability guarantee, no
