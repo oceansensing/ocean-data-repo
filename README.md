@@ -30,13 +30,25 @@ made private, this dispatch 404s before it fetches anything.
 
 That would be discovered at the worst possible moment — reaching for the
 standby precisely because production is already broken. So the workflow now
-carries `token: ${{ secrets.PIPELINES_TOKEN || github.token }}`, which is a
-no-op until the secret exists and needs a fine-grained PAT with Contents:
-Read-only on the site repository. **The secret has to be set on this
-repository too**; secrets do not cross repositories, and setting it only on
-`realtime-data-repo` would leave exactly this hazard in the one place nobody
-is watching. `realtime-data-repo`'s README carries the full order of
-operations.
+carries `ssh-key: ${{ secrets.PIPELINES_SSH_KEY }}`, the private half of a
+**read-only deploy key** whose public half goes on the site repository. It is
+a no-op until the secret exists: an unset secret is the empty string, which
+`actions/checkout` treats as "no key" and falls back to the token path it has
+always used.
+
+A deploy key rather than a token because it matches what this step does — one
+repository, read, no writes — and because it does not expire and belongs to
+no person, which are the two ways a credential quietly dies between the day
+it is set up and the day a standby is finally needed.
+
+**The secret has to be set on this repository too**; secrets do not cross
+repositories, and setting it only on `realtime-data-repo` would leave exactly
+this hazard in the one place nobody is watching. One key serves both — the
+public half sits once on the site repository. Neither half is ever committed:
+the private one lives in Actions secrets, not in the tree.
+`realtime-data-repo`'s README carries the full order of operations, including
+the step that matters most — prove it on a green run *before* the site goes
+private.
 
 A standby that has not been shown to start is not a standby. The freeze is written in that file rather than only
 switched off in the Actions UI, because a workflow disabled through the API

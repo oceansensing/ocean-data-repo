@@ -105,10 +105,10 @@ jobs:
           ref: main
           path: site
           # **The same grant this repository never had, and it matters more
-          # here than in production.** With no `token:` this uses this
+          # here than in production.** With no credential this uses this
           # workflow's own `GITHUB_TOKEN`, which holds nothing on the site
-          # repository; it reads it because it is public. If the site goes
-          # private, this checkout 404s.
+          # repository; it reads it because that repository is public. If the
+          # site goes private, this checkout fails.
           #
           # This repository is frozen — dispatch-only, kept as the warm
           # standby that makes "switch back" one string in the site's
@@ -118,12 +118,16 @@ jobs:
           # credential. A standby that has not been shown to start is not a
           # standby.
           #
-          # Falsy-coalesced, so it is a no-op until `PIPELINES_TOKEN` is set
-          # here; needs a fine-grained PAT with Contents: Read-only on the
-          # site repository. Note the secret has to exist on **this**
-          # repository too — secrets do not cross repositories, and setting
-          # it only on realtime-data-repo would leave exactly this hazard.
-          token: ${{ secrets.PIPELINES_TOKEN || github.token }}
+          # A read-only deploy key, the same one production uses: `ssh-key`
+          # empty is falsy inside `actions/checkout`, which then takes its
+          # token path with the default `${{ github.token }}`, so this is a
+          # no-op until the secret exists. **The secret has to be set on
+          # this repository too** — secrets do not cross repositories, and
+          # setting it only on realtime-data-repo would leave exactly this
+          # hazard in the one place nobody is watching. One deploy key
+          # serves both: the public half sits once on the site repository,
+          # and each data repository holds the private half.
+          ssh-key: ${{ secrets.PIPELINES_SSH_KEY }}
 
       - uses: actions/setup-python@v5
         with:
