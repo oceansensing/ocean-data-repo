@@ -107,8 +107,9 @@ jobs:
           # **The same grant this repository never had, and it matters more
           # here than in production.** With no credential this uses this
           # workflow's own `GITHUB_TOKEN`, which holds nothing on the site
-          # repository; it reads it because that repository is public. If the
-          # site goes private, this checkout fails.
+          # repository — it used to read it on anonymous access, and the site
+          # repository went **private on 2026-08-17**, so that path is now a
+          # 404 and the deploy key below is the only way in.
           #
           # This repository is frozen — dispatch-only, kept as the warm
           # standby that makes "switch back" one string in the site's
@@ -116,7 +117,12 @@ jobs:
           # somebody reached for the fallback because production was already
           # broken, which is the worst possible time to discover a missing
           # credential. A standby that has not been shown to start is not a
-          # standby.
+          # standby. So it was dispatched on the day the site went private
+          # rather than argued about: *Check out the pipelines* succeeded
+          # here against the private repository, the same as production. The
+          # distinction is worth keeping — holding the same secret and the
+          # same key is a reason to expect it to work, and a green run is the
+          # only thing that says it does.
           #
           # A read-only deploy key, the same one production uses: `ssh-key`
           # empty is falsy inside `actions/checkout`, which then takes its
